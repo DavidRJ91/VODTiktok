@@ -104,14 +104,16 @@ els.start.addEventListener("click", async () => {
       scheduled = new Date(els.scheduledAt.value).toISOString().replace(/\.\d{3}Z$/, "Z");
       if (new Date(scheduled) <= new Date()) throw new Error("La programación debe ser futura.");
     }
-    const inputs = {
-      mode: mode(),
-      tiktok_live_url: liveUrl,
-      chunk_minutes: String(els.chunk.value || 25),
-      title: els.title.value.trim(),
-      description: els.description.value.trim(),
-      privacy: els.privacy.value,
-      scheduled_at: scheduled
+    const inputs: {
+    tiktok_url: tiktokUrl,
+    mode: mode,
+    title: title,
+    description: description,
+    privacy_status: privacy,
+    scheduled_at: scheduledAt,
+    max_record_seconds: String(maxRecordSeconds),
+    chunk_seconds: String(chunkMinutes * 60)
+}
     };
     els.start.disabled = true;
     const startedAt = Date.now();
