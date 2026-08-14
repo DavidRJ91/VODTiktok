@@ -1,12 +1,6 @@
 from __future__ import annotations
-import json, os, subprocess, sys
+import json, os, subprocess
 from pathlib import Path
-
-for _stream in (sys.stdout, sys.stderr):
-    try:
-        _stream.reconfigure(encoding="utf-8", errors="replace")
-    except (AttributeError, ValueError):
-        pass
 
 def env(name: str, default: str = "") -> str:
     return os.environ.get(name, default).strip()

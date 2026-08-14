@@ -17,3 +17,7 @@ button:hover { filter:brightness(1.1); }
 #status.ok { color:#86efac; }
 #status.error { color:#fca5a5; }
 .result a { color:#93c5fd; }
+details.card summary { cursor:pointer; font-weight:700; list-style:none; }
+details.card summary::-webkit-details-marker { display:none; }
+details.card summary span { font-weight:400; color:#94a3b8; }
+.hint { color:#64748b; font-size:.85rem; margin:8px 0 0; }

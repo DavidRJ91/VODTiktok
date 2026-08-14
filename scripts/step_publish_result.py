@@ -25,7 +25,16 @@ def main():
     git("config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com")
     git("add", str(path))
     subprocess.run(["git","commit","-m",f"Publish result for run {run_id}"], check=False)
-    subprocess.run(["git","push"], check=True)
+
+    # Reintenta con rebase por si otra ejecución concurrente publicó su
+    # resultado justo antes (evita que el job falle solo por un push no-ff).
+    for attempt in range(3):
+        push = subprocess.run(["git", "push"])
+        if push.returncode == 0:
+            break
+        subprocess.run(["git", "pull", "--rebase"], check=True)
+    else:
+        subprocess.run(["git", "push"], check=True)
 
 if __name__ == "__main__":
     main()

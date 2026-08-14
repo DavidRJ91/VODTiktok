@@ -6,7 +6,8 @@ from tiktok_live_capture import TikTokLiveError, capture_live_segment, is_live
 
 def main():
     url = env("TIKTOK_LIVE_URL")
-    max_seconds = max(60, min(int(env("CHUNK_SECONDS", "1500")), 3600))
+    minutes = max(5, min(int(env("CHUNK_MINUTES", "25")), 60))
+    max_seconds = minutes * 60
     base_title = env("VIDEO_TITLE", "TikTok LIVE")
     description = env("VIDEO_DESCRIPTION")
     parts = []

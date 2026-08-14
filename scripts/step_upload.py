@@ -11,7 +11,7 @@ def main():
         manifest["filepath"],
         manifest.get("title") or "TikTok LIVE",
         manifest.get("description") or "",
-        env("PRIVACY_STATUS", "unlisted"),
+        env("PRIVACY", "unlisted"),
         env("SCHEDULED_AT", ""),
     )
     result["source_url"] = manifest.get("source_url", "")
