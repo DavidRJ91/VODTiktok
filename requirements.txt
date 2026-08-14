@@ -1,5 +1,5 @@
 yt-dlp[default]
-curl_cffi
+curl-cffi<0.16
 google-api-python-client
 google-auth
 requests

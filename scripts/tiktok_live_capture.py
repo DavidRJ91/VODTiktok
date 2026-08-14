@@ -10,6 +10,8 @@ from pathlib import Path
 
 from common import env, probe_duration_seconds
 
+_SCRIPT_DIR = Path(__file__).parent
+
 
 class TikTokLiveError(RuntimeError):
     pass
@@ -45,7 +47,7 @@ def _cookies_file() -> str | None:
 
 
 def _base_ytdlp_args() -> list[str]:
-    args = [sys.executable, "-m", "yt_dlp", "--no-warnings"]
+    args = [sys.executable, str(_SCRIPT_DIR / "ytdlp_patch.py"), "--no-warnings"]
     cookies = _cookies_file()
     if cookies:
         print(f"Usando cookies de TikTok: {cookies}")
@@ -61,6 +63,7 @@ def get_live_metadata(url: str) -> dict:
            "--retries", "5", "--extractor-retries", "5", url],
         capture_output=True,
         text=True,
+        encoding="utf-8",
     )
     if p.returncode != 0:
         msg = (p.stderr or p.stdout).strip()
@@ -104,6 +107,26 @@ def _find_output_file(folder: Path) -> Path | None:
         and p.stat().st_size > 0
     ]
     return max(candidates, key=lambda p: p.stat().st_mtime) if candidates else None
+
+
+def _remux_flv_to_mp4(filepath: Path) -> Path:
+    if filepath.suffix.lower() != ".flv":
+        return filepath
+    out = filepath.with_suffix(".mp4")
+    p = subprocess.run(
+        ["ffmpeg", "-y", "-i", str(filepath), "-c", "copy", "-movflags", "+faststart", str(out)],
+        capture_output=True,
+        text=True,
+    )
+    if p.returncode == 0 and out.exists() and out.stat().st_size > 0:
+        try:
+            filepath.unlink()
+        except OSError:
+            pass
+        print(f"Remux FLV -> MP4: {out.name}")
+        return out
+    print("AVISO: no se pudo remuxear a MP4; se mantiene el archivo FLV.")
+    return filepath
 
 
 def _get_info_without_blocking(url: str) -> LiveInfo:
@@ -167,6 +190,7 @@ def capture_live_segment(url: str, output_dir: str | Path, max_seconds: int | No
             "--socket-timeout", "30",
             "--concurrent-fragments", "1",
             "-f", "best",
+            "--no-part",
             "--remux-video", "mp4",
             "-o", output_template,
             url,
@@ -190,6 +214,7 @@ def capture_live_segment(url: str, output_dir: str | Path, max_seconds: int | No
 
             filepath = _find_output_file(output_dir)
             if filepath is not None and filepath.stat().st_size >= 256 * 1024:
+                filepath = _remux_flv_to_mp4(filepath)
                 duration = probe_duration_seconds(filepath)
                 print(f"Captura válida: {filepath}")
                 return CaptureResult(str(filepath), duration, info)
