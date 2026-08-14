@@ -63,6 +63,7 @@ jobs:
       YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
       YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
       YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+      TIKTOK_COOKIES: ${{ secrets.TIKTOK_COOKIES }}
 
     steps:
       - name: Checkout
@@ -85,6 +86,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           python -m yt_dlp --version
+
+      - name: Configure TikTok cookies
+        run: |
+          if [ -n "$TIKTOK_COOKIES" ]; then
+            echo "$TIKTOK_COOKIES" | base64 -d > tiktok_cookies.txt
+            echo "TIKTOK_COOKIES_FILE=tiktok_cookies.txt" >> "$GITHUB_ENV"
+            echo "Cookies de TikTok configuradas."
+          else
+            echo "Secret TIKTOK_COOKIES vacío: se intentará sin cookies."
+          fi
 
       - name: Check TikTok URL
         run: |
