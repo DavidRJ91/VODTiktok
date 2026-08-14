@@ -2,63 +2,77 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TikTok LIVE.IS</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<main class="app">
-  <header><h1>TikTok LIVE.IS</h1><p>TikTok LIVE → YouTube</p></header>
+  <main class="app">
+    <header>
+      <h1>TikTok LIVE.IS</h1>
+      <p>Graba un TikTok LIVE y súbelo a YouTube</p>
+    </header>
 
-  <section class="card">
-    <h2>Conexión GitHub</h2>
-    <label>Owner <input id="owner" placeholder="DavidRJ91"></label>
-    <label>Repositorio <input id="repo" placeholder="TikTok-LIVE.IS"></label>
-    <label>Branch <input id="branch" value="main"></label>
-    <label>GitHub token <input id="token" type="password" placeholder="Fine-grained token con Actions: Read/Write"></label>
-    <button id="saveConnection">Guardar conexión local</button>
-  </section>
+    <section class="card">
+      <h2>Conexión GitHub</h2>
+      <label>Owner <input id="owner" value="DavidRJ91"></label>
+      <label>Repositorio <input id="repo" value="VODTiktok"></label>
+      <label>Branch <input id="branch" value="main"></label>
+      <label>Token GitHub <input id="token" type="password"></label>
+      <button id="saveConnection" type="button">Guardar conexión</button>
+    </section>
 
-  <section class="card">
-    <h2>Nuevo trabajo</h2>
-    <label>URL del TikTok LIVE
-      <input id="tiktokLiveUrl" type="url" placeholder="https://www.tiktok.com/@usuario/live">
-    </label>
+    <section class="card">
+      <h2>Grabar LIVE</h2>
 
-    <div class="modes">
-      <label><input type="radio" name="mode" value="live_simple" checked> Directo completo</label>
-      <label><input type="radio" name="mode" value="live_chunked"> Por partes</label>
-    </div>
+      <label>URL del TikTok LIVE
+        <input id="tiktokLiveUrl" type="url" placeholder="https://www.tiktok.com/@usuario/live">
+      </label>
 
-    <label id="chunkWrap">Minutos por parte
-      <input id="chunkMinutes" type="number" min="5" max="60" value="25">
-    </label>
+      <label>Modo
+        <select id="mode">
+          <option value="simple">Directo completo</option>
+          <option value="chunked">Por partes</option>
+        </select>
+      </label>
 
-    <label>Título <input id="title" placeholder="TikTok LIVE"></label>
-    <label>Descripción <textarea id="description"></textarea></label>
+      <label id="chunkWrap">Minutos por parte
+        <input id="chunkMinutes" type="number" min="1" max="60" value="5">
+      </label>
 
-    <label>Visibilidad
-      <select id="privacy">
-        <option value="unlisted">Oculto</option>
-        <option value="public">Público</option>
-        <option value="scheduled">Programado</option>
-      </select>
-    </label>
+      <label>Título YouTube
+        <input id="title" placeholder="TikTok LIVE">
+      </label>
 
-    <label id="scheduleWrap">Fecha y hora
-      <input id="scheduledAt" type="datetime-local">
-    </label>
+      <label>Descripción
+        <textarea id="description"></textarea>
+      </label>
 
-    <button id="start">⏺ Grabar y subir</button>
-    <p id="status">Listo.</p>
-    <div id="runInfo"></div>
-  </section>
+      <label>Visibilidad
+        <select id="privacy">
+          <option value="unlisted">Oculto</option>
+          <option value="public">Público</option>
+          <option value="private">Privado</option>
+          <option value="scheduled">Programado</option>
+        </select>
+      </label>
 
-  <section class="card">
-    <h2>Resultados</h2>
-    <div id="results">Aún no hay resultados.</div>
-  </section>
-</main>
-<script src="app.js"></script>
+      <label id="scheduleWrap" style="display:none">Fecha y hora
+        <input id="scheduledAt" type="datetime-local">
+      </label>
+
+      <label>Máximo de grabación (horas)
+        <input id="maxRecordHours" type="number" min="1" max="6" value="4">
+      </label>
+
+      <button id="start" type="button">Iniciar grabación</button>
+
+      <p id="status">Listo.</p>
+      <p id="runInfo"></p>
+      <div id="results"></div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
 </body>
 </html>
