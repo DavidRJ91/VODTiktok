@@ -1,1 +1,92 @@
+name: Process TikTok LIVE
 
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        required: true
+        type: choice
+        options: [live_simple, live_chunked]
+      tiktok_live_url:
+        required: true
+        type: string
+      chunk_minutes:
+        required: false
+        default: "25"
+        type: string
+      title:
+        required: false
+        default: ""
+        type: string
+      description:
+        required: false
+        default: ""
+        type: string
+      privacy:
+        required: true
+        default: unlisted
+        type: choice
+        options: [public, unlisted, scheduled]
+      scheduled_at:
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    env:
+      TIKTOK_LIVE_URL: ${{ inputs.tiktok_live_url }}
+      CHUNK_MINUTES: ${{ inputs.chunk_minutes }}
+      VIDEO_TITLE: ${{ inputs.title }}
+      VIDEO_DESCRIPTION: ${{ inputs.description }}
+      PRIVACY: ${{ inputs.privacy }}
+      SCHEDULED_AT: ${{ inputs.scheduled_at }}
+      YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+      YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+      YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Check TikTok LIVE
+        run: |
+          PYTHONPATH=scripts python -c "import os; from tiktok_live_capture import get_live_info; i=get_live_info(os.environ['TIKTOK_LIVE_URL']); print(i); assert i.is_live, 'El LIVE no está activo o no es accesible'"
+
+      - name: Record TikTok LIVE
+        if: ${{ inputs.mode == 'live_simple' }}
+        run: python scripts/step_tiktok_live_simple.py
+
+      - name: Upload to YouTube
+        if: ${{ inputs.mode == 'live_simple' }}
+        run: python scripts/step_upload.py
+
+      - name: Record and upload TikTok LIVE in parts
+        if: ${{ inputs.mode == 'live_chunked' }}
+        run: python scripts/step_tiktok_live_chunked.py
+
+      - name: Publish result
+        if: always()
+        run: python scripts/step_publish_result.py
