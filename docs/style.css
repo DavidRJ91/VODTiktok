@@ -1,0 +1,19 @@
+:root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; }
+* { box-sizing: border-box; }
+body { margin:0; background:#0a0d14; color:#eef2ff; }
+.app { max-width:900px; margin:auto; padding:28px 16px 60px; }
+header { margin-bottom:22px; }
+h1 { margin:0; font-size:2rem; }
+header p { color:#94a3b8; }
+.card { background:#121826; border:1px solid #263247; border-radius:16px; padding:20px; margin:16px 0; }
+label { display:block; margin:12px 0; color:#cbd5e1; }
+input, textarea, select, button { width:100%; margin-top:6px; padding:12px; border-radius:10px; border:1px solid #34425c; background:#0b1220; color:#fff; }
+textarea { min-height:100px; resize:vertical; }
+button { cursor:pointer; font-weight:700; background:#1d4ed8; border:0; }
+button:hover { filter:brightness(1.1); }
+.modes { display:flex; gap:20px; flex-wrap:wrap; }
+.modes label { width:auto; }
+.modes input { width:auto; }
+#status.ok { color:#86efac; }
+#status.error { color:#fca5a5; }
+.result a { color:#93c5fd; }
