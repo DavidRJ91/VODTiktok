@@ -189,7 +189,7 @@ def capture_live_segment(url: str, output_dir: str | Path, max_seconds: int | No
             "--retry-sleep", "fragment:3",
             "--socket-timeout", "30",
             "--concurrent-fragments", "1",
-            "-f", "best",
+            "-f", "best[ext=flv]/best",
             "--no-part",
             "--remux-video", "mp4",
             "-o", output_template,
