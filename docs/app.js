@@ -24,8 +24,9 @@ const els = {
   results: $("results")
 };
 
-function setStatus(message) {
+function setStatus(message, kind) {
   els.status.textContent = message;
+  els.status.className = kind || "";
   console.log(message);
 }
 
@@ -48,11 +49,8 @@ function apiHeaders(token) {
 }
 
 function updateUI() {
-  els.chunkWrap.style.display =
-    els.mode.value === "chunked" ? "block" : "none";
-
-  els.scheduleWrap.style.display =
-    els.privacy.value === "scheduled" ? "block" : "none";
+  els.chunkWrap.style.display = els.mode.value === "chunked" ? "block" : "none";
+  els.scheduleWrap.style.display = els.privacy.value === "scheduled" ? "block" : "none";
 }
 
 els.mode.addEventListener("change", updateUI);
@@ -60,11 +58,8 @@ els.privacy.addEventListener("change", updateUI);
 
 els.saveConnection.addEventListener("click", () => {
   const connection = getConnection();
-  localStorage.setItem(
-    "vodtiktok_connection",
-    JSON.stringify(connection)
-  );
-  setStatus("Conexión guardada en este navegador.");
+  localStorage.setItem("vodtiktok_connection", JSON.stringify(connection));
+  setStatus("Conexión guardada en este navegador.", "ok");
 });
 
 try {
@@ -101,10 +96,73 @@ async function dispatchWorkflow(connection, inputs) {
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(
-      "GitHub API: " + response.status + " " + text
-    );
+    throw new Error("GitHub API: " + response.status + " " + text);
   }
+}
+
+async function findRun(connection, startedAt) {
+  const url =
+    "https://api.github.com/repos/" +
+    encodeURIComponent(connection.owner) +
+    "/" +
+    encodeURIComponent(connection.repo) +
+    "/actions/workflows/" +
+    encodeURIComponent(WORKFLOW_FILE) +
+    "/runs?event=workflow_dispatch&per_page=10";
+
+  const response = await fetch(url, { headers: apiHeaders(connection.token) });
+  if (!response.ok) throw new Error("No se pudieron consultar las ejecuciones.");
+  const data = await response.json();
+  return data.workflow_runs.find(
+    (run) => new Date(run.created_at).getTime() >= startedAt - 5000
+  );
+}
+
+async function pollRun(connection, runId) {
+  const url =
+    "https://api.github.com/repos/" +
+    encodeURIComponent(connection.owner) +
+    "/" +
+    encodeURIComponent(connection.repo) +
+    "/actions/runs/" + runId;
+
+  while (true) {
+    const response = await fetch(url, { headers: apiHeaders(connection.token) });
+    if (!response.ok) throw new Error("No se pudo consultar el estado.");
+    const run = await response.json();
+    els.runInfo.textContent =
+      "Run #" + run.id + ": " + run.status +
+      (run.conclusion ? " — " + run.conclusion : "");
+    if (run.status === "completed") return run;
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+  }
+}
+
+async function loadResult(connection, runId) {
+  const url =
+    "https://raw.githubusercontent.com/" +
+    encodeURIComponent(connection.owner) +
+    "/" +
+    encodeURIComponent(connection.repo) +
+    "/" +
+    encodeURIComponent(connection.branch) +
+    "/run_status/" + runId + ".json?" + Date.now();
+
+  const response = await fetch(url);
+  if (!response.ok) {
+    els.results.textContent = "El workflow terminó, pero el resultado aún no está disponible.";
+    return;
+  }
+  const data = await response.json();
+  const items = data.live_parts && data.live_parts.length
+    ? data.live_parts
+    : (data.main ? [data.main] : []);
+  els.results.innerHTML = items.length
+    ? items.map((x) =>
+        '<div class="result"><a target="_blank" rel="noopener" href="' + x.video_url + '">' +
+        (x.title || x.video_url) + "</a></div>"
+      ).join("")
+    : "No se encontraron vídeos.";
 }
 
 els.start.addEventListener("click", async () => {
@@ -112,13 +170,10 @@ els.start.addEventListener("click", async () => {
     const connection = getConnection();
 
     if (!connection.owner || !connection.repo || !connection.token) {
-      throw new Error(
-        "Completa Owner, Repositorio y Token de GitHub."
-      );
+      throw new Error("Completa Owner, Repositorio y Token de GitHub.");
     }
 
     const liveUrl = els.tiktokLiveUrl.value.trim();
-
     if (!liveUrl || !liveUrl.toLowerCase().includes("tiktok.com")) {
       throw new Error("Introduce una URL válida de TikTok.");
     }
@@ -131,21 +186,12 @@ els.start.addEventListener("click", async () => {
 
     if (privacyChoice === "scheduled") {
       if (!els.scheduledAt.value) {
-        throw new Error(
-          "Selecciona una fecha y hora para programar."
-        );
+        throw new Error("Selecciona una fecha y hora para programar.");
       }
-
-      scheduledAt = new Date(
-        els.scheduledAt.value
-      ).toISOString();
-
+      scheduledAt = new Date(els.scheduledAt.value).toISOString();
       if (new Date(scheduledAt) <= new Date()) {
-        throw new Error(
-          "La fecha programada debe ser futura."
-        );
+        throw new Error("La fecha programada debe ser futura.");
       }
-
       privacyStatus = "private";
     }
 
@@ -166,14 +212,31 @@ els.start.addEventListener("click", async () => {
     els.start.disabled = true;
     setStatus("Lanzando workflow...");
 
+    const startedAt = Date.now();
     await dispatchWorkflow(connection, inputs);
 
-    setStatus(
-      "Workflow lanzado correctamente. Revisa la pestaña Actions de GitHub."
-    );
+    setStatus("Workflow lanzado. Buscando ejecución...");
+    let run;
+    for (let i = 0; i < 12 && !run; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      run = await findRun(connection, startedAt);
+    }
+    if (!run) {
+      setStatus("Workflow lanzado, pero no se encontró la ejecución. Revisa la pestaña Actions.", "ok");
+      return;
+    }
+
+    const finalRun = await pollRun(connection, run.id);
+    if (finalRun.conclusion === "success") {
+      setStatus("Proceso completado.", "ok");
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      await loadResult(connection, run.id);
+    } else {
+      setStatus("El workflow terminó con: " + finalRun.conclusion, "error");
+    }
   } catch (error) {
     console.error(error);
-    setStatus(error.message || String(error));
+    setStatus(error.message || String(error), "error");
   } finally {
     els.start.disabled = false;
   }

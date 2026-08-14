@@ -2,6 +2,7 @@ from __future__ import annotations
 import json, os, time
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
 
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
@@ -41,9 +42,18 @@ def upload_video(filepath, title, description, privacy, scheduled_at=""):
     request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
 
     response = None
+    retries = 0
     while response is None:
-        _, response = request.next_chunk()
-        time.sleep(0.2)
+        try:
+            _, response = request.next_chunk()
+        except HttpError as exc:
+            if exc.resp.status in (429, 500, 502, 503, 504) and retries < 6:
+                retries += 1
+                time.sleep(min(2 ** retries, 60))
+                continue
+            raise
+        if response is None:
+            time.sleep(0.5)
 
     video_id = response["id"]
     return {
