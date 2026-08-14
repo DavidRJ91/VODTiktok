@@ -26,7 +26,25 @@ En `Settings → Secrets and variables → Actions`, crea:
 
 El refresh token debe tener el scope `youtube.upload` (proyecto de Google Cloud con la API de YouTube Data v3 habilitada).
 
-### 3. GitHub Pages
+### 3. (Recomendado) Cookies de TikTok — `TIKTOK_COOKIES`
+
+TikTok requiere un token (`msToken`) para devolver los datos del LIVE; sin él, `yt-dlp` suele fallar con el error falso **"The channel is not currently live"**. La forma más fiable de evitarlo es aportar cookies de una sesión con TikTok:
+
+1. Instala la extensión **"Get cookies.txt LOCALLY"** en Chrome/Edge y entra a `tiktok.com` iniciando sesión.
+2. Exporta las cookies (formato Netscape) y codifícalas en base64:
+
+   ```bash
+   # En Windows (PowerShell):
+   Get-Content -Raw cookies.txt | ConvertTo-Base64 | Set-Content -NoNewline tiktok_cookies_b64.txt
+   # En Linux/macOS:
+   base64 -w0 cookies.txt > tiktok_cookies_b64.txt
+   ```
+
+3. Copia el contenido de `tiktok_cookies_b64.txt` en el secret `TIKTOK_COOKIES` de GitHub Actions.
+
+> Las cookies caducan; si dejan de funcionar, expórtalas de nuevo. El secret es opcional: sin él el workflow reintenta igualmente (con menos probabilidad de éxito).
+
+### 4. GitHub Pages
 
 En `Settings → Pages`:
 
@@ -34,7 +52,7 @@ En `Settings → Pages`:
 - Branch: `main`
 - Folder: `/docs`
 
-### 4. Token para la interfaz
+### 5. Token para la interfaz
 
 Crea un Fine-grained Personal Access Token para el repositorio con permiso **Actions: Read and write**. La interfaz lo guarda únicamente en `localStorage` del navegador.
 

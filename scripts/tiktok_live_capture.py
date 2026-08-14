@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from common import probe_duration_seconds
+from common import env, probe_duration_seconds
 
 
 class TikTokLiveError(RuntimeError):
@@ -37,14 +37,28 @@ def validate_tiktok_url(url: str) -> None:
         raise TikTokLiveError("Introduce una URL válida de TikTok.")
 
 
+def _cookies_file() -> str | None:
+    candidate = env("TIKTOK_COOKIES_FILE") or env("COOKIES_FILE")
+    if candidate and Path(candidate).exists():
+        return candidate
+    return None
+
+
+def _base_ytdlp_args() -> list[str]:
+    args = [sys.executable, "-m", "yt_dlp", "--no-warnings"]
+    cookies = _cookies_file()
+    if cookies:
+        print(f"Usando cookies de TikTok: {cookies}")
+        args += ["--cookies", cookies]
+    return args
+
+
 def get_live_metadata(url: str) -> dict:
     validate_tiktok_url(url)
     p = subprocess.run(
-        [
-            sys.executable, "-m", "yt_dlp",
-            "--dump-single-json", "--skip-download", "--no-warnings",
-            "--retries", "3", "--extractor-retries", "3", url,
-        ],
+        _base_ytdlp_args()
+        + ["--dump-single-json", "--skip-download",
+           "--retries", "5", "--extractor-retries", "5", url],
         capture_output=True,
         text=True,
     )
@@ -144,8 +158,7 @@ def capture_live_segment(url: str, output_dir: str | Path, max_seconds: int | No
         info = _get_info_without_blocking(url)
         output_template = str(output_dir / f"{tag}_attempt{attempt}_%(epoch)s.%(ext)s")
 
-        cmd = [
-            sys.executable, "-m", "yt_dlp", "--no-warnings",
+        cmd = _base_ytdlp_args() + [
             "--retries", "10",
             "--fragment-retries", "10",
             "--extractor-retries", "5",
