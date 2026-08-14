@@ -8,8 +8,9 @@ const els = {
   branch: $("branch"),
   token: $("token"),
   saveConnection: $("saveConnection"),
-  url: $("tiktokLiveUrl"),
-  chunk: $("chunkMinutes"),
+  tiktokLiveUrl: $("tiktokLiveUrl"),
+  mode: $("mode"),
+  chunkMinutes: $("chunkMinutes"),
   chunkWrap: $("chunkWrap"),
   title: $("title"),
   description: $("description"),
@@ -23,12 +24,12 @@ const els = {
   results: $("results")
 };
 
-function mode() {
-  const selected = document.querySelector('input[name="mode"]:checked');
-  return selected ? selected.value : "simple";
+function setStatus(message) {
+  els.status.textContent = message;
+  console.log(message);
 }
 
-function connection() {
+function getConnection() {
   return {
     owner: els.owner.value.trim(),
     repo: els.repo.value.trim(),
@@ -37,166 +38,92 @@ function connection() {
   };
 }
 
-function headers(token) {
+function apiHeaders(token) {
   return {
     "Accept": "application/vnd.github+json",
-    "Authorization": `Bearer ${token}`,
+    "Authorization": "Bearer " + token,
     "X-GitHub-Api-Version": "2022-11-28",
     "Content-Type": "application/json"
   };
 }
 
-function setStatus(text, kind = "") {
-  els.status.textContent = text;
-  els.status.className = kind;
+function updateUI() {
+  els.chunkWrap.style.display =
+    els.mode.value === "chunked" ? "block" : "none";
+
+  els.scheduleWrap.style.display =
+    els.privacy.value === "scheduled" ? "block" : "none";
 }
 
-function updateVisibility() {
-  els.chunkWrap.style.display = mode() === "chunked" ? "block" : "none";
-  els.scheduleWrap.style.display = els.privacy.value === "scheduled" ? "block" : "none";
-}
-
-document.querySelectorAll('input[name="mode"]').forEach((x) => {
-  x.addEventListener("change", updateVisibility);
-});
-
-els.privacy.addEventListener("change", updateVisibility);
+els.mode.addEventListener("change", updateUI);
+els.privacy.addEventListener("change", updateUI);
 
 els.saveConnection.addEventListener("click", () => {
-  const c = connection();
-  localStorage.setItem("tiktok-live-is-connection", JSON.stringify(c));
-  setStatus("Conexión guardada solo en este navegador.", "ok");
+  const connection = getConnection();
+  localStorage.setItem(
+    "vodtiktok_connection",
+    JSON.stringify(connection)
+  );
+  setStatus("Conexión guardada en este navegador.");
 });
 
-const saved = localStorage.getItem("tiktok-live-is-connection");
-
-if (saved) {
-  try {
-    const c = JSON.parse(saved);
-    els.owner.value = c.owner || "";
-    els.repo.value = c.repo || "";
-    els.branch.value = c.branch || "main";
-    els.token.value = c.token || "";
-  } catch {
-    localStorage.removeItem("tiktok-live-is-connection");
+try {
+  const saved = localStorage.getItem("vodtiktok_connection");
+  if (saved) {
+    const connection = JSON.parse(saved);
+    els.owner.value = connection.owner || "DavidRJ91";
+    els.repo.value = connection.repo || "VODTiktok";
+    els.branch.value = connection.branch || "main";
+    els.token.value = connection.token || "";
   }
+} catch (error) {
+  console.error(error);
 }
 
-async function dispatch(c, inputs) {
-  const url =
-    `https://api.github.com/repos/${encodeURIComponent(c.owner)}` +
-    `/${encodeURIComponent(c.repo)}` +
-    `/actions/workflows/${encodeURIComponent(WORKFLOW_FILE)}/dispatches`;
+async function dispatchWorkflow(connection, inputs) {
+  const endpoint =
+    "https://api.github.com/repos/" +
+    encodeURIComponent(connection.owner) +
+    "/" +
+    encodeURIComponent(connection.repo) +
+    "/actions/workflows/" +
+    encodeURIComponent(WORKFLOW_FILE) +
+    "/dispatches";
 
-  const r = await fetch(url, {
+  const response = await fetch(endpoint, {
     method: "POST",
-    headers: headers(c.token),
+    headers: apiHeaders(connection.token),
     body: JSON.stringify({
-      ref: c.branch,
-      inputs
+      ref: connection.branch,
+      inputs: inputs
     })
   });
 
-  if (!r.ok) {
-    throw new Error(`GitHub API: ${r.status} ${await r.text()}`);
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(
+      "GitHub API: " + response.status + " " + text
+    );
   }
-}
-
-async function findRun(c, startedAt) {
-  const url =
-    `https://api.github.com/repos/${encodeURIComponent(c.owner)}` +
-    `/${encodeURIComponent(c.repo)}` +
-    `/actions/workflows/${encodeURIComponent(WORKFLOW_FILE)}` +
-    `/runs?event=workflow_dispatch&per_page=10`;
-
-  const r = await fetch(url, {
-    headers: headers(c.token)
-  });
-
-  if (!r.ok) {
-    throw new Error("No se pudieron consultar las ejecuciones.");
-  }
-
-  const data = await r.json();
-
-  return data.workflow_runs.find(
-    (run) => new Date(run.created_at).getTime() >= startedAt - 5000
-  );
-}
-
-async function pollRun(c, runId) {
-  const url =
-    `https://api.github.com/repos/${encodeURIComponent(c.owner)}` +
-    `/${encodeURIComponent(c.repo)}` +
-    `/actions/runs/${runId}`;
-
-  while (true) {
-    const r = await fetch(url, {
-      headers: headers(c.token)
-    });
-
-    if (!r.ok) {
-      throw new Error("No se pudo consultar el estado.");
-    }
-
-    const run = await r.json();
-
-    els.runInfo.textContent =
-      `Run #${run.id}: ${run.status}` +
-      (run.conclusion ? ` — ${run.conclusion}` : "");
-
-    if (run.status === "completed") {
-      return run;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 5000));
-  }
-}
-
-async function loadResult(c, runId) {
-  const url =
-    `https://raw.githubusercontent.com/${encodeURIComponent(c.owner)}` +
-    `/${encodeURIComponent(c.repo)}` +
-    `/${encodeURIComponent(c.branch)}` +
-    `/run_status/${runId}.json?${Date.now()}`;
-
-  const r = await fetch(url);
-
-  if (!r.ok) {
-    els.results.textContent =
-      "El workflow terminó, pero el resultado aún no está disponible.";
-    return;
-  }
-
-  const data = await r.json();
-  const items =
-    data.live_parts?.length
-      ? data.live_parts
-      : (data.main ? [data.main] : []);
-
-  els.results.innerHTML = items.length
-    ? items.map((x) =>
-        `<div class="result"><a target="_blank" rel="noopener" href="${x.video_url}">` +
-        `${x.title || x.video_url}</a></div>`
-      ).join("")
-    : "No se encontraron vídeos.";
 }
 
 els.start.addEventListener("click", async () => {
   try {
-    const c = connection();
+    const connection = getConnection();
 
-    if (!c.owner || !c.repo || !c.token) {
-      throw new Error("Completa owner, repositorio y token de GitHub.");
+    if (!connection.owner || !connection.repo || !connection.token) {
+      throw new Error(
+        "Completa Owner, Repositorio y Token de GitHub."
+      );
     }
 
-    const liveUrl = els.url.value.trim();
+    const liveUrl = els.tiktokLiveUrl.value.trim();
 
     if (!liveUrl || !liveUrl.toLowerCase().includes("tiktok.com")) {
       throw new Error("Introduce una URL válida de TikTok.");
     }
 
-    const selectedMode = mode();
+    const selectedMode = els.mode.value;
     const privacyChoice = els.privacy.value;
 
     let privacyStatus = privacyChoice;
@@ -204,30 +131,26 @@ els.start.addEventListener("click", async () => {
 
     if (privacyChoice === "scheduled") {
       if (!els.scheduledAt.value) {
-        throw new Error("Selecciona fecha y hora para programar.");
+        throw new Error(
+          "Selecciona una fecha y hora para programar."
+        );
       }
 
-      scheduledAt = new Date(els.scheduledAt.value)
-        .toISOString()
-        .replace(/\.\d{3}Z$/, "Z");
+      scheduledAt = new Date(
+        els.scheduledAt.value
+      ).toISOString();
 
       if (new Date(scheduledAt) <= new Date()) {
-        throw new Error("La programación debe ser futura.");
+        throw new Error(
+          "La fecha programada debe ser futura."
+        );
       }
 
-      // El workflow acepta visibilidad estándar y la fecha por separado.
       privacyStatus = "private";
     }
 
-    const chunkMinutes = Math.max(
-      5,
-      Math.min(60, Number(els.chunk.value) || 25)
-    );
-
-    const maxHours = Math.max(
-      1,
-      Math.min(6, Number(els.maxRecordHours.value) || 4)
-    );
+    const maxHours = Number(els.maxRecordHours.value) || 4;
+    const chunkMinutes = Number(els.chunkMinutes.value) || 5;
 
     const inputs = {
       tiktok_url: liveUrl,
@@ -241,48 +164,20 @@ els.start.addEventListener("click", async () => {
     };
 
     els.start.disabled = true;
-
-    const startedAt = Date.now();
-
     setStatus("Lanzando workflow...");
-    els.runInfo.textContent = "";
-    els.results.textContent = "Esperando resultado...";
 
-    await dispatch(c, inputs);
+    await dispatchWorkflow(connection, inputs);
 
-    setStatus("Workflow lanzado. Buscando ejecución...");
-
-    let run;
-
-    for (let i = 0; i < 15 && !run; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      run = await findRun(c, startedAt);
-    }
-
-    if (!run) {
-      throw new Error(
-        "GitHub aceptó el workflow, pero no se encontró la ejecución."
-      );
-    }
-
-    const finalRun = await pollRun(c, run.id);
-
-    if (finalRun.conclusion === "success") {
-      setStatus("Proceso completado.", "ok");
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-      await loadResult(c, run.id);
-    } else {
-      setStatus(
-        `El workflow terminó con: ${finalRun.conclusion || "estado desconocido"}`,
-        "error"
-      );
-    }
-  } catch (e) {
-    console.error(e);
-    setStatus(e.message || String(e), "error");
+    setStatus(
+      "Workflow lanzado correctamente. Revisa la pestaña Actions de GitHub."
+    );
+  } catch (error) {
+    console.error(error);
+    setStatus(error.message || String(error));
   } finally {
     els.start.disabled = false;
   }
 });
 
-updateVisibility();
+updateUI();
+console.log("VODTiktok app.js cargado correctamente.");
