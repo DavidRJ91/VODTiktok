@@ -181,6 +181,8 @@ def capture_live_segment(url: str, output_dir: str | Path, max_seconds: int | No
 
     cmd = [
         sys.executable, "-m", "yt_dlp",
+        "-v",  # temporal: para ver el comando exacto de ffmpeg y el contexto
+                # justo antes del segfault. Se puede quitar una vez resuelto.
         "--no-warnings", "--no-part",
         "--remux-video", "mp4",
         "-f", "best",
