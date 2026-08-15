@@ -188,25 +188,42 @@ def capture_live_segment(url: str, output_dir: str | Path, max_seconds: int | No
         *_extra_ytdlp_args(),
         url,
     ]
-    process = subprocess.Popen(cmd)
-    started = time.monotonic()
-    stopped_by_limit = False
 
-    try:
-        while process.poll() is None:
-            if max_seconds is not None and time.monotonic() - started >= max_seconds:
-                stopped_by_limit = True
-                process.send_signal(signal.SIGINT)
-                break
-            time.sleep(1)
+    def _run() -> int | None:
+        process = subprocess.Popen(cmd)
+        started = time.monotonic()
         try:
-            process.wait(timeout=90)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait()
-    finally:
-        if process.poll() is None:
-            process.kill()
+            while process.poll() is None:
+                if max_seconds is not None and time.monotonic() - started >= max_seconds:
+                    process.send_signal(signal.SIGINT)
+                    break
+                time.sleep(1)
+            try:
+                process.wait(timeout=90)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+        finally:
+            if process.poll() is None:
+                process.kill()
+        return process.returncode
+
+    def _has_output() -> bool:
+        return any(
+            p.is_file() and p.suffix.lower() in {".mp4", ".mkv", ".webm", ".ts", ".flv"}
+            for p in output_dir.iterdir()
+        )
+
+    for attempt in range(2):
+        returncode = _run()
+        if _has_output():
+            break
+        # returncode negativo = el proceso murió por una señal (p. ej. un
+        # segfault de ffmpeg) sin llegar a escribir nada. Un único reintento
+        # suele bastar para descartar un fallo puntual/transitorio.
+        if attempt == 0 and returncode is not None and returncode < 0:
+            continue
+        break
 
     filepath = _find_output_file(output_dir)
     if filepath.stat().st_size < 1024 * 512:

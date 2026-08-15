@@ -80,6 +80,17 @@ Orden recomendado si el problema persiste:
 3. Si sigue fallando, añade un proxy residencial en el secret `TIKTOK_PROXY`. Es la solución más fiable porque evita por completo el bloqueo por IP de datacenter, a costa de depender de un servicio de proxy de pago.
 4. Alternativa a 3: usa un [runner autoalojado](https://docs.github.com/actions/hosting-your-own-runners) en una IP no perteneciente a un datacenter conocido, en vez del runner `ubuntu-latest` de GitHub.
 
+### "ffmpeg exited with code -11" al grabar (aunque la comprobación pase)
+
+Código -11 significa que `ffmpeg` murió por una señal SIGSEGV (segfault), no
+por un problema de bloqueo/permmisos. La causa más probable es la versión de
+`ffmpeg` de los repositorios de Ubuntu, que puede fallar con ciertos streams
+HLS en directo. Desde esta versión el workflow instala un build estático
+reciente en vez de `apt-get install ffmpeg`, y el script reintenta una vez
+automáticamente si el proceso muere por una señal sin escribir nada. Si
+sigue pasando tras esto, sería ya un caso para reportar con el log completo
+(usando `-v` en yt-dlp) en el repositorio de yt-dlp o de ffmpeg.
+
 ## Limitaciones
 
 - TikTok puede cambiar su sistema y `yt-dlp` puede dejar de acceder a determinados LIVE.
