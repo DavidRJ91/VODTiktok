@@ -1,11 +1,15 @@
 from __future__ import annotations
-import json, os, signal, subprocess, sys, time
+import json, os, re, signal, subprocess, sys, time
 from dataclasses import dataclass
 from pathlib import Path
+import requests
 from common import probe_duration_seconds
 
 class TikTokLiveError(RuntimeError):
     pass
+
+_BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+               "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
 
 def _extra_ytdlp_args() -> list[str]:
     """Argumentos opcionales para yt-dlp: cookies de una sesión logueada y/o
@@ -24,6 +28,64 @@ def _extra_ytdlp_args() -> list[str]:
         args += ["--proxy", proxy]
     return args
 
+def _tiktok_cookie_jar() -> dict:
+    """Cookies de una sesión logueada (mismo secret TIKTOK_COOKIES, formato
+    Netscape cookies.txt), para las peticiones directas de abajo."""
+    raw = os.environ.get("TIKTOK_COOKIES", "").strip()
+    jar = {}
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) >= 7:
+            jar[parts[5]] = parts[6]
+    return jar
+
+def _extract_username(url: str) -> str | None:
+    m = re.search(r"tiktok\.com/@([^/?#]+)", url)
+    return m.group(1) if m else None
+
+def _direct_room_id(username: str) -> str | None:
+    """Lee el room_id embebido en la página pública del LIVE (una petición
+    normal, la misma página que carga cualquier visitante en su navegador)."""
+    try:
+        r = requests.get(
+            f"https://www.tiktok.com/@{username}/live",
+            headers={"User-Agent": _BROWSER_UA, "Accept-Language": "en-US"},
+            cookies=_tiktok_cookie_jar(), timeout=15,
+        )
+    except requests.RequestException:
+        return None
+    m = re.search(r'"roomId"\s*:\s*"(\d+)"', r.text)
+    return m.group(1) if m else None
+
+def _direct_is_alive(room_id: str) -> bool | None:
+    """Confirma el estado del LIVE contra la API pública de TikTok
+    (check_alive + room/info), igual que hace la propia web. Devuelve None
+    si la consulta falla, para no convertirse en un nuevo punto de fallo."""
+    headers = {"User-Agent": _BROWSER_UA}
+    cookies = _tiktok_cookie_jar()
+    try:
+        alive = requests.get(
+            "https://webcast.tiktok.com/webcast/room/check_alive/",
+            params={"aid": "1988", "region": "US", "room_ids": room_id, "user_is_login": "true"},
+            headers=headers, cookies=cookies, timeout=15,
+        ).json()
+        data_list = alive.get("data")
+        if not isinstance(data_list, list) or not data_list or not data_list[0].get("alive"):
+            return False
+
+        info = requests.get(
+            "https://webcast.tiktok.com/webcast/room/info/",
+            params={"aid": "1988", "room_id": room_id},
+            headers=headers, cookies=cookies, timeout=15,
+        ).json()
+        status = (info.get("data") or {}).get("status")
+        return status is None or str(status) == "2"
+    except (requests.RequestException, ValueError, KeyError, TypeError):
+        return None
+
 @dataclass
 class LiveInfo:
     title: str
@@ -41,38 +103,65 @@ def validate_tiktok_url(url: str):
     if not url or "tiktok.com" not in url.lower():
         raise TikTokLiveError("Introduce una URL válida de TikTok.")
 
-def get_live_metadata(url: str) -> dict:
-    validate_tiktok_url(url)
+def _ytdlp_dump_json(url: str) -> tuple[dict | None, str | None]:
+    """Devuelve (metadatos, None) si yt-dlp tuvo éxito, o (None, error) si no."""
     p = subprocess.run(
         [sys.executable, "-m", "yt_dlp", "--dump-single-json",
          "--skip-download", "--no-warnings", *_extra_ytdlp_args(), url],
         capture_output=True, text=True
     )
     if p.returncode != 0:
-        msg = (p.stderr or p.stdout).strip()
-        hint = ""
-        if "not currently live" in msg.lower() or "captcha" in msg.lower():
-            hint = ("\n\nEsto suele pasar cuando TikTok bloquea la IP del runner "
-                    "(datacenter) y sirve una página de captcha en vez del estado real. "
-                    "Prueba a definir el secret TIKTOK_COOKIES (cookies de una sesión "
-                    "logueada) o TIKTOK_PROXY (proxy residencial).")
-        raise TikTokLiveError("No se pudo consultar el LIVE con yt-dlp:\n" + msg[-2500:] + hint)
+        return None, (p.stderr or p.stdout).strip()
     try:
-        return json.loads(p.stdout)
-    except json.JSONDecodeError as exc:
-        raise TikTokLiveError("yt-dlp no devolvió metadatos JSON válidos.") from exc
+        return json.loads(p.stdout), None
+    except json.JSONDecodeError:
+        return None, "yt-dlp no devolvió metadatos JSON válidos."
 
 def get_live_info(url: str) -> LiveInfo:
-    d = get_live_metadata(url)
-    return LiveInfo(
-        title=d.get("title") or "TikTok LIVE",
-        uploader=d.get("uploader") or d.get("channel") or "",
-        room_id=str(d.get("id") or ""),
-        is_live=bool(d.get("is_live")),
+    validate_tiktok_url(url)
+    data, err = _ytdlp_dump_json(url)
+
+    if data and data.get("is_live"):
+        return LiveInfo(
+            title=data.get("title") or "TikTok LIVE",
+            uploader=data.get("uploader") or data.get("channel") or "",
+            room_id=str(data.get("id") or ""),
+            is_live=True,
+        )
+
+    # yt-dlp no lo confirma (falló o dice que no está en directo). Antes de
+    # darlo por perdido lo verificamos por nuestra cuenta contra la propia
+    # API pública de TikTok: yt-dlp puede fallar por un bloqueo de IP del
+    # runner sin que el LIVE esté realmente caído.
+    username = _extract_username(url)
+    if username:
+        room_id = _direct_room_id(username)
+        if room_id and _direct_is_alive(room_id):
+            return LiveInfo(
+                title=(data or {}).get("title") or f"TikTok LIVE de @{username}",
+                uploader=username,
+                room_id=room_id,
+                is_live=True,
+            )
+
+    hint = ""
+    if not data or "not currently live" in (err or "").lower() or "captcha" in (err or "").lower():
+        hint = ("\n\nEsto suele pasar cuando TikTok bloquea la IP del runner (datacenter) "
+                "y sirve una página de captcha en vez del estado real, y la verificación "
+                "directa contra la API de TikTok tampoco ha podido confirmarlo. Prueba a "
+                "definir el secret TIKTOK_COOKIES (cookies de una sesión logueada) o "
+                "TIKTOK_PROXY (proxy residencial).")
+    raise TikTokLiveError(
+        "No se pudo confirmar que el LIVE está activo"
+        + (f":\n{err[-2000:]}" if err else ".")
+        + hint
     )
 
 def is_live(url: str) -> bool:
-    return get_live_info(url).is_live
+    try:
+        return get_live_info(url).is_live
+    except TikTokLiveError:
+        return False
 
 def _find_output_file(folder: Path) -> Path:
     candidates = [p for p in folder.iterdir()

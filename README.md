@@ -60,7 +60,20 @@ Actions) y les sirve una página de captcha en vez de la información real del
 LIVE; `yt-dlp` interpreta esa respuesta como "no está en directo". No es un
 fallo de este proyecto ni indica que el LIVE no exista.
 
-Orden recomendado para solucionarlo:
+Desde esta versión, `get_live_info()` ya no depende solo de `yt-dlp`: si
+`yt-dlp` falla o dice que no está en directo, se hace una segunda
+comprobación directa contra la propia API pública de TikTok
+(`webcast/room/check_alive` + `webcast/room/info`) antes de dar el LIVE por
+no disponible. Esto arregla el caso típico en el que solo falla la
+*comprobación* pero TikTok seguiría sirviendo el directo con normalidad.
+
+Importante: esta comprobación directa **solo confirma si está en directo**;
+la grabación en sí la sigue haciendo `yt-dlp`. Si el bloqueo de TikTok es lo
+bastante agresivo como para afectar también a la descarga del vídeo (no solo
+a la comprobación), verás pasar el paso "Check TikTok LIVE" pero fallar
+"Record TikTok LIVE" — en ese caso, sigue con los pasos de abajo.
+
+Orden recomendado si el problema persiste:
 
 1. Confirma que ves el error también con `yt-dlp` actualizado (`pip install -U yt-dlp`) — TikTok cambia su web con frecuencia y las versiones antiguas fallan más.
 2. Exporta las cookies de una sesión de TikTok logueada en tu navegador (extensión tipo "Get cookies.txt") y guárdalas como el secret `TIKTOK_COOKIES`. Ayuda, aunque no siempre es suficiente por sí solo.
