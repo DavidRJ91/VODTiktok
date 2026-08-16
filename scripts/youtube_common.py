@@ -27,10 +27,8 @@ def youtube_service():
 
 def upload_video(filepath, title, description, privacy, scheduled_at=""):
     youtube = youtube_service()
-    status = {"privacyStatus": "private" if privacy == "scheduled" else privacy}
-    if privacy == "scheduled":
-        if not scheduled_at:
-            raise RuntimeError("Falta SCHEDULED_AT para programar el vídeo.")
+    status = {"privacyStatus": "private" if scheduled_at else privacy}
+    if scheduled_at:
         status["publishAt"] = scheduled_at
 
     body = {

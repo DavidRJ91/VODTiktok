@@ -49,7 +49,7 @@ function setStatus(text, kind="") {
   els.status.className = kind;
 }
 function updateVisibility() {
-  els.chunkWrap.style.display = mode() === "live_chunked" ? "block" : "none";
+  els.chunkWrap.style.display = mode() === "chunked" ? "block" : "none";
   els.scheduleWrap.style.display = els.privacy.value === "scheduled" ? "block" : "none";
 }
 document.querySelectorAll('input[name="mode"]').forEach(x => x.addEventListener("change", updateVisibility));
@@ -124,14 +124,20 @@ els.start.addEventListener("click", async () => {
       scheduled = new Date(els.scheduledAt.value).toISOString().replace(/\.\d{3}Z$/, "Z");
       if (new Date(scheduled) <= new Date()) throw new Error("La programación debe ser futura.");
     }
+    // "Programado" en la interfaz no es un privacy_status real de YouTube:
+    // para programar, YouTube exige status=private + publishAt. El
+    // workflow solo acepta [public, unlisted, private] como privacy_status,
+    // así que aquí lo traducimos.
+    const isScheduled = els.privacy.value === "scheduled";
     const inputs = {
+      tiktok_url: liveUrl,
       mode: mode(),
-      tiktok_live_url: liveUrl,
-      chunk_minutes: String(els.chunk.value || 25),
       title: els.title.value.trim(),
       description: els.description.value.trim(),
-      privacy: els.privacy.value,
-      scheduled_at: scheduled
+      privacy_status: isScheduled ? "private" : els.privacy.value,
+      scheduled_at: scheduled,
+      max_record_seconds: "16800",
+      chunk_seconds: String(Math.round(Number(els.chunk.value || 5) * 60)),
     };
     els.start.disabled = true;
     const startedAt = Date.now();
