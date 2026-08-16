@@ -187,6 +187,12 @@ def capture_live_segment(url: str, output_dir: str | Path, max_seconds: int | No
         "--remux-video", "mp4",
         "-f", "best",
         "-o", output_template,
+        # yt-dlp fuerza ffmpeg para cualquier HLS marcado como directo
+        # (is_live=True); --hls-prefer-native no tiene efecto en ese caso,
+        # así que el único margen de maniobra es pasarle argumentos extra a
+        # ese ffmpeg. -http_persistent 0 es un workaround conocido para
+        # varios cuelgues/crashes de ffmpeg al leer HLS en directo.
+        "--downloader-args", "ffmpeg_i:-http_persistent 0",
         *_extra_ytdlp_args(),
         url,
     ]

@@ -83,13 +83,27 @@ Orden recomendado si el problema persiste:
 ### "ffmpeg exited with code -11" al grabar (aunque la comprobación pase)
 
 Código -11 significa que `ffmpeg` murió por una señal SIGSEGV (segfault), no
-por un problema de bloqueo/permmisos. La causa más probable es la versión de
-`ffmpeg` de los repositorios de Ubuntu, que puede fallar con ciertos streams
-HLS en directo. Desde esta versión el workflow instala un build estático
-reciente en vez de `apt-get install ffmpeg`, y el script reintenta una vez
-automáticamente si el proceso muere por una señal sin escribir nada. Si
-sigue pasando tras esto, sería ya un caso para reportar con el log completo
-(usando `-v` en yt-dlp) en el repositorio de yt-dlp o de ffmpeg.
+por un problema de bloqueo/permisos. Comprobado con logs reales:
+
+- No es una versión de `ffmpeg` desactualizada: pasa igual con el paquete de
+  Ubuntu que con un build estático reciente (7.0.2).
+- No se puede evitar que `yt-dlp` use `ffmpeg` para descargar: el propio
+  código de `yt-dlp` fuerza el downloader `ffmpeg` para cualquier HLS
+  marcado como directo (`is_live=True`), sin excepción — ni
+  `--hls-prefer-native` tiene efecto ahí.
+- Se ha añadido `--downloader-args "ffmpeg_i:-http_persistent 0"`, un
+  workaround conocido para varios cuelgues/crashes de `ffmpeg` al leer HLS
+  en directo con conexiones HTTP persistentes.
+- Se ha dejado `-v` (verbose) activo en el comando para poder ver, si vuelve
+  a fallar, el contexto exacto justo antes del crash.
+
+Si sigue fallando tras esto, el siguiente paso ya no sería seguir probando
+flags de `ffmpeg` a ciegas, sino evitar su demuxer de HLS en directo por
+completo: descargar los segmentos `.ts` nosotros mismos con `requests`
+(leyendo y refrescando el `.m3u8` a mano) y usar `ffmpeg` solo al final,
+una vez ya descargado, para concatenar/remuxear — una operación mucho más
+sencilla y con muchas menos probabilidades de toparse con un bug del
+demuxer en directo.
 
 ## Limitaciones
 
