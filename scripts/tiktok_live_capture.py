@@ -58,12 +58,17 @@ def _direct_room_id(username: str) -> str | None:
     except requests.RequestException:
         return None
     m = re.search(r'"roomId"\s*:\s*"(\d+)"', r.text)
-    return m.group(1) if m else None
+    room_id = m.group(1) if m else None
+    # "0" es el placeholder habitual de TikTok cuando no hay sala activa
+    # (puede quedar en el HTML de un perfil que ya no está en directo).
+    return room_id if room_id and room_id != "0" else None
 
 def _direct_is_alive(room_id: str) -> bool | None:
     """Confirma el estado del LIVE contra la API pública de TikTok
     (check_alive + room/info), igual que hace la propia web. Devuelve None
-    si la consulta falla, para no convertirse en un nuevo punto de fallo."""
+    si la consulta falla o es ambigua, para no convertirse en un nuevo
+    punto de fallo NI en un falso positivo: solo se considera "en directo"
+    ante una confirmación clara, nunca por defecto."""
     headers = {"User-Agent": _BROWSER_UA}
     cookies = _tiktok_cookie_jar()
     try:
@@ -82,7 +87,9 @@ def _direct_is_alive(room_id: str) -> bool | None:
             headers=headers, cookies=cookies, timeout=15,
         ).json()
         status = (info.get("data") or {}).get("status")
-        return status is None or str(status) == "2"
+        if status is None:
+            return None  # ambiguo: no lo demos por en directo sin confirmación
+        return str(status) == "2"
     except (requests.RequestException, ValueError, KeyError, TypeError):
         return None
 
