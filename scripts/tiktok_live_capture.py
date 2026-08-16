@@ -65,10 +65,14 @@ def _direct_room_id(username: str) -> str | None:
 
 def _direct_is_alive(room_id: str) -> bool | None:
     """Confirma el estado del LIVE contra la API pública de TikTok
-    (check_alive + room/info), igual que hace la propia web. Devuelve None
-    si la consulta falla o es ambigua, para no convertirse en un nuevo
-    punto de fallo NI en un falso positivo: solo se considera "en directo"
-    ante una confirmación clara, nunca por defecto."""
+    (check_alive + room/info), igual que hace la propia web.
+
+    check_alive es el endpoint dedicado exactamente a esta pregunta, así que
+    se trata como señal principal. room/info es solo una confirmación
+    adicional: si no da una respuesta clara (algo típico de un bloqueo de
+    IP del runner, no de una sala que no existe), NO se usa para desmentir
+    un check_alive positivo — solo lo desmiente si da un status explícito
+    y distinto de "en directo"."""
     headers = {"User-Agent": _BROWSER_UA}
     cookies = _tiktok_cookie_jar()
     try:
@@ -77,21 +81,26 @@ def _direct_is_alive(room_id: str) -> bool | None:
             params={"aid": "1988", "region": "US", "room_ids": room_id, "user_is_login": "true"},
             headers=headers, cookies=cookies, timeout=15,
         ).json()
-        data_list = alive.get("data")
-        if not isinstance(data_list, list) or not data_list or not data_list[0].get("alive"):
-            return False
+    except (requests.RequestException, ValueError):
+        return None
 
+    data_list = alive.get("data")
+    if not isinstance(data_list, list) or not data_list or not data_list[0].get("alive"):
+        return False
+
+    try:
         info = requests.get(
             "https://webcast.tiktok.com/webcast/room/info/",
             params={"aid": "1988", "room_id": room_id},
             headers=headers, cookies=cookies, timeout=15,
         ).json()
         status = (info.get("data") or {}).get("status")
-        if status is None:
-            return None  # ambiguo: no lo demos por en directo sin confirmación
-        return str(status) == "2"
     except (requests.RequestException, ValueError, KeyError, TypeError):
-        return None
+        status = None
+
+    if status is not None and str(status) != "2":
+        return False  # contradicción clara -> no confiar en check_alive
+    return True
 
 @dataclass
 class LiveInfo:
